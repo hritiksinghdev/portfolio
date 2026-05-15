@@ -1,24 +1,16 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { auth, db } from "../lib/firebase";
+import { auth } from "../lib/firebase";
+import { supabase } from "../lib/supabase";
 import {
     signInWithEmailAndPassword,
     onAuthStateChanged,
     signOut,
 } from "firebase/auth";
-import {
-    collection,
-    query,
-    orderBy,
-    onSnapshot,
-    doc,
-    updateDoc,
-} from "firebase/firestore";
 
-// ─── Helpers ────────────────────────────────────────────────
 function formatTimestamp(ts) {
     if (!ts) return "";
-    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    const d = new Date(ts);
     return d.toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
@@ -32,11 +24,9 @@ function formatTimestamp(ts) {
         });
 }
 
-// ─── Rate-limit constants ───────────────────────────────────
 const MAX_ATTEMPTS = 3;
 const LOCKOUT_SECONDS = 30;
 
-// ─── Skeleton Card ──────────────────────────────────────────
 function SkeletonCard() {
     return (
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5 animate-pulse">
@@ -54,23 +44,17 @@ function SkeletonCard() {
     );
 }
 
-// ═══════════════════════════════════════════════════════════
-//  LOGIN SCREEN
-// ═══════════════════════════════════════════════════════════
-function LoginScreen({ onAuth }) {
+function LoginScreen() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [showPw, setShowPw] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const [shakeKey, setShakeKey] = useState(0);
-
-    // Rate-limit state
     const [attempts, setAttempts] = useState(0);
     const [lockoutEnd, setLockoutEnd] = useState(null);
     const [countdown, setCountdown] = useState(0);
 
-    // Countdown timer
     useEffect(() => {
         if (!lockoutEnd) return;
         const tick = () => {
@@ -92,14 +76,13 @@ function LoginScreen({ onAuth }) {
 
     const handleLogin = async (e) => {
         e.preventDefault();
-        if (isLocked) return;
+        if (isLocked || !auth) return;
 
         setError("");
         setLoading(true);
         try {
             await signInWithEmailAndPassword(auth, email, password);
             setAttempts(0);
-            // onAuthStateChanged in parent will pick this up
         } catch (err) {
             const next = attempts + 1;
             setAttempts(next);
@@ -130,7 +113,6 @@ function LoginScreen({ onAuth }) {
                 className="w-full max-w-md rounded-2xl border border-white/10
                    bg-white/5 backdrop-blur-xl shadow-2xl shadow-lavender/5 p-8"
             >
-                {/* Logo / Title */}
                 <div className="text-center mb-8">
                     <h1
                         className="text-3xl font-bold tracking-tight"
@@ -143,8 +125,13 @@ function LoginScreen({ onAuth }) {
                     <p className="text-sm text-neutral-500 mt-1">Portfolio Dashboard</p>
                 </div>
 
+                {!auth && (
+                    <p className="text-sm text-red-400 text-center mb-4">
+                        Authentication service is unavailable.
+                    </p>
+                )}
+
                 <form onSubmit={handleLogin} className="space-y-5">
-                    {/* Email */}
                     <div>
                         <label className="field-label block mb-1" htmlFor="admin-email">
                             Email
@@ -161,7 +148,6 @@ function LoginScreen({ onAuth }) {
                         />
                     </div>
 
-                    {/* Password */}
                     <div>
                         <label className="field-label block mb-1" htmlFor="admin-pw">
                             Password
@@ -189,7 +175,6 @@ function LoginScreen({ onAuth }) {
                         </div>
                     </div>
 
-                    {/* Error */}
                     <AnimatePresence mode="wait">
                         {error && (
                             <motion.p
@@ -205,7 +190,6 @@ function LoginScreen({ onAuth }) {
                         )}
                     </AnimatePresence>
 
-                    {/* Lockout countdown */}
                     {isLocked && (
                         <p className="text-xs text-amber-400 text-center">
                             Too many attempts. Retry in{" "}
@@ -213,10 +197,9 @@ function LoginScreen({ onAuth }) {
                         </p>
                     )}
 
-                    {/* Submit */}
                     <button
                         type="submit"
-                        disabled={loading || isLocked}
+                        disabled={loading || isLocked || !auth}
                         className="relative w-full py-3 rounded-xl font-semibold text-sm
                        bg-gradient-to-r from-lavender to-royal
                        hover:shadow-lg hover:shadow-lavender/25
@@ -234,7 +217,6 @@ function LoginScreen({ onAuth }) {
                             "Sign In"
                         )}
 
-                        {/* shimmer overlay */}
                         {!loading && !isLocked && (
                             <span
                                 className="absolute inset-0 -translate-x-full animate-[shimmer_2.5s_infinite]
@@ -245,7 +227,6 @@ function LoginScreen({ onAuth }) {
                 </form>
             </motion.div>
 
-            {/* shimmer keyframe (injected once) */}
             <style>{`
         @keyframes shimmer {
           100% { transform: translateX(100%); }
@@ -255,18 +236,18 @@ function LoginScreen({ onAuth }) {
     );
 }
 
-// ═══════════════════════════════════════════════════════════
-//  MESSAGE CARD
-// ═══════════════════════════════════════════════════════════
 function MessageCard({ msg, index, onMarkRead }) {
     const [expanded, setExpanded] = useState(false);
     const isRead = msg.read === true;
 
     const handleMarkRead = async (e) => {
         e.stopPropagation();
-        if (isRead) return;
+        if (isRead || !supabase) return;
         try {
-            await updateDoc(doc(db, "contact_requests", msg.id), { read: true });
+            await supabase
+                .from("contact_requests")
+                .update({ read: true })
+                .eq("id", msg.id);
         } catch (err) {
             console.error("Failed to mark as read:", err);
         }
@@ -282,7 +263,6 @@ function MessageCard({ msg, index, onMarkRead }) {
                   cursor-pointer transition-all duration-200 hover:bg-white/[.07]
                   border-l-4 ${isRead ? "border-l-emerald-500" : "border-l-blue-500"}`}
         >
-            {/* Header */}
             <div className="flex items-start justify-between gap-3 mb-2">
                 <div className="min-w-0">
                     <p className="font-semibold text-white truncate">{msg.name}</p>
@@ -293,18 +273,15 @@ function MessageCard({ msg, index, onMarkRead }) {
                 )}
             </div>
 
-            {/* Body */}
             <p
-                className={`text-sm text-neutral-300 mb-3 whitespace-pre-wrap break-words ${expanded ? "" : "line-clamp-3"
-                    }`}
+                className={`text-sm text-neutral-300 mb-3 whitespace-pre-wrap break-words ${expanded ? "" : "line-clamp-3"}`}
             >
                 {msg.message}
             </p>
 
-            {/* Footer */}
             <div className="flex items-center justify-between gap-2 flex-wrap">
                 <span className="text-xs text-neutral-500">
-                    {formatTimestamp(msg.createdAt)}
+                    {formatTimestamp(msg.created_at)}
                 </span>
                 {!isRead && (
                     <button
@@ -323,39 +300,53 @@ function MessageCard({ msg, index, onMarkRead }) {
     );
 }
 
-// ═══════════════════════════════════════════════════════════
-//  DASHBOARD
-// ═══════════════════════════════════════════════════════════
 function Dashboard({ user }) {
     const [messages, setMessages] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    // Real-time listener (only if authenticated)
+    const fetchMessages = useCallback(async () => {
+        if (!supabase) {
+            setLoading(false);
+            return;
+        }
+        setLoading(true);
+        const { data, error } = await supabase
+            .from("contact_requests")
+            .select("*")
+            .order("created_at", { ascending: false });
+
+        if (error) {
+            console.error("Failed to fetch messages:", error);
+        } else {
+            setMessages(data || []);
+        }
+        setLoading(false);
+    }, []);
+
     useEffect(() => {
-        if (!user) return;
+        fetchMessages();
+    }, [fetchMessages]);
 
-        const q = query(
-            collection(db, "contact_requests"),
-            orderBy("createdAt", "desc")
-        );
+    // Real-time subscription
+    useEffect(() => {
+        if (!supabase) return;
 
-        const unsub = onSnapshot(
-            q,
-            (snap) => {
-                const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-                setMessages(data);
-                setLoading(false);
-            },
-            (err) => {
-                console.error("Firestore snapshot error:", err);
-                setLoading(false);
-            }
-        );
+        const channel = supabase
+            .channel("contact_requests_changes")
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "contact_requests" },
+                () => fetchMessages()
+            )
+            .subscribe();
 
-        return unsub;
-    }, [user]);
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [fetchMessages]);
 
     const handleLogout = async () => {
+        if (!auth) return;
         try {
             await signOut(auth);
         } catch (err) {
@@ -363,18 +354,11 @@ function Dashboard({ user }) {
         }
     };
 
-    const handleRefresh = () => {
-        setLoading(true);
-        // The onSnapshot listener will automatically refresh — force a brief skeleton
-        setTimeout(() => setLoading(false), 600);
-    };
-
-    // Stats
     const total = messages.length;
     const unread = messages.filter((m) => !m.read).length;
     const today = messages.filter((m) => {
-        if (!m.createdAt) return false;
-        const d = m.createdAt.toDate ? m.createdAt.toDate() : new Date(m.createdAt);
+        if (!m.created_at) return false;
+        const d = new Date(m.created_at);
         const now = new Date();
         return (
             d.getDate() === now.getDate() &&
@@ -385,7 +369,6 @@ function Dashboard({ user }) {
 
     return (
         <div className="min-h-screen bg-primary">
-            {/* ── Navbar ────────────────────────────── */}
             <nav className="sticky top-0 z-40 border-b border-white/10 bg-primary/80 backdrop-blur-lg">
                 <div className="max-w-6xl mx-auto flex items-center justify-between px-5 py-4">
                     <h1 className="text-lg font-bold tracking-tight">
@@ -401,9 +384,8 @@ function Dashboard({ user }) {
                     </h1>
 
                     <div className="flex items-center gap-3">
-                        {/* Refresh */}
                         <button
-                            onClick={handleRefresh}
+                            onClick={fetchMessages}
                             title="Refresh"
                             className="p-2 rounded-lg border border-white/10 text-neutral-400
                          hover:text-white hover:bg-white/5 transition-colors text-sm"
@@ -411,7 +393,6 @@ function Dashboard({ user }) {
                             ↻
                         </button>
 
-                        {/* Logout */}
                         <button
                             onClick={handleLogout}
                             className="px-4 py-2 rounded-lg text-sm font-medium
@@ -425,9 +406,7 @@ function Dashboard({ user }) {
                 </div>
             </nav>
 
-            {/* ── Content ───────────────────────────── */}
             <main className="max-w-6xl mx-auto px-5 py-8">
-                {/* Stats */}
                 <div className="grid grid-cols-3 gap-4 mb-8">
                     {[
                         { label: "Total Messages", value: total, color: "text-lavender" },
@@ -444,8 +423,14 @@ function Dashboard({ user }) {
                     ))}
                 </div>
 
-                {/* Messages grid */}
-                {loading ? (
+                {!supabase ? (
+                    <div className="text-center py-24">
+                        <p className="text-xl text-red-400">Database service unavailable</p>
+                        <p className="text-sm text-neutral-600 mt-1">
+                            Supabase is not configured. Check environment variables.
+                        </p>
+                    </div>
+                ) : loading ? (
                     <div className="grid md:grid-cols-2 gap-4">
                         <SkeletonCard />
                         <SkeletonCard />
@@ -475,14 +460,15 @@ function Dashboard({ user }) {
     );
 }
 
-// ═══════════════════════════════════════════════════════════
-//  ADMIN (root component)
-// ═══════════════════════════════════════════════════════════
 export default function Admin() {
     const [user, setUser] = useState(null);
     const [authLoading, setAuthLoading] = useState(true);
 
     useEffect(() => {
+        if (!auth) {
+            setAuthLoading(false);
+            return;
+        }
         const unsub = onAuthStateChanged(auth, (u) => {
             setUser(u);
             setAuthLoading(false);
