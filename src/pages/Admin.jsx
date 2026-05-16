@@ -236,8 +236,9 @@ function LoginScreen() {
     );
 }
 
-function MessageCard({ msg, index, onMarkRead }) {
+function MessageCard({ msg, index }) {
     const [expanded, setExpanded] = useState(false);
+    const [confirmDelete, setConfirmDelete] = useState(false);
     const isRead = msg.read === true;
 
     const handleMarkRead = async (e) => {
@@ -250,6 +251,24 @@ function MessageCard({ msg, index, onMarkRead }) {
                 .eq("id", msg.id);
         } catch (err) {
             console.error("Failed to mark as read:", err);
+        }
+    };
+
+    const handleDelete = async (e) => {
+        e.stopPropagation();
+        if (!supabase) return;
+        if (!confirmDelete) {
+            setConfirmDelete(true);
+            setTimeout(() => setConfirmDelete(false), 3000);
+            return;
+        }
+        try {
+            await supabase
+                .from("contact_requests")
+                .delete()
+                .eq("id", msg.id);
+        } catch (err) {
+            console.error("Failed to delete:", err);
         }
     };
 
@@ -267,10 +286,25 @@ function MessageCard({ msg, index, onMarkRead }) {
                 <div className="min-w-0">
                     <p className="font-semibold text-white truncate">{msg.name}</p>
                     <p className="text-xs text-neutral-500 truncate">{msg.email}</p>
+                    {msg.phone && (
+                        <p className="text-xs text-neutral-500 truncate">{msg.phone}</p>
+                    )}
                 </div>
-                {!isRead && (
-                    <span className="shrink-0 size-2.5 rounded-full bg-blue-500 mt-1.5" />
-                )}
+                <div className="flex items-center gap-2 shrink-0">
+                    {!isRead && (
+                        <span className="size-2.5 rounded-full bg-blue-500 mt-1.5" />
+                    )}
+                    <button
+                        onClick={handleDelete}
+                        className={`text-xs px-2 py-1 rounded-full border transition-colors ${
+                            confirmDelete
+                                ? "border-red-500 text-red-400 bg-red-500/10"
+                                : "border-white/10 text-neutral-500 hover:text-red-400 hover:border-red-500/40"
+                        }`}
+                    >
+                        {confirmDelete ? "Confirm?" : "Delete"}
+                    </button>
+                </div>
             </div>
 
             <p
@@ -283,18 +317,20 @@ function MessageCard({ msg, index, onMarkRead }) {
                 <span className="text-xs text-neutral-500">
                     {formatTimestamp(msg.created_at)}
                 </span>
-                {!isRead && (
-                    <button
-                        onClick={handleMarkRead}
-                        className="text-xs px-3 py-1 rounded-full border border-emerald-500/40
-                       text-emerald-400 hover:bg-emerald-500/10 transition-colors"
-                    >
-                        Mark as Read
-                    </button>
-                )}
-                {isRead && (
-                    <span className="text-xs text-emerald-500/70 select-none">✓ Read</span>
-                )}
+                <div className="flex items-center gap-2">
+                    {!isRead && (
+                        <button
+                            onClick={handleMarkRead}
+                            className="text-xs px-3 py-1 rounded-full border border-emerald-500/40
+                           text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                        >
+                            Mark as Read
+                        </button>
+                    )}
+                    {isRead && (
+                        <span className="text-xs text-emerald-500/70 select-none">Read</span>
+                    )}
+                </div>
             </div>
         </motion.div>
     );

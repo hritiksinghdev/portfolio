@@ -5,8 +5,10 @@ import { useScrollReveal } from "../hooks/useScrollReveal";
 import { supabase } from "../lib/supabase";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_REGEX = /^[+]?[\d\s\-().]{7,20}$/;
 const MAX_NAME_LENGTH = 100;
 const MAX_EMAIL_LENGTH = 254;
+const MAX_PHONE_LENGTH = 20;
 const MAX_MESSAGE_LENGTH = 2000;
 const RATE_LIMIT_MS = 30000;
 
@@ -18,6 +20,7 @@ const Contact = () => {
   const [formData, setFormData] = useState({
     name: "",
     email: "",
+    phone: "",
     message: "",
   });
   const [isLoading, setIsLoading] = useState(false);
@@ -49,6 +52,7 @@ const Contact = () => {
 
     const name = sanitize(formData.name);
     const email = sanitize(formData.email);
+    const phone = sanitize(formData.phone);
     const message = sanitize(formData.message);
 
     if (!name || name.length > MAX_NAME_LENGTH) {
@@ -57,6 +61,10 @@ const Contact = () => {
     }
     if (!EMAIL_REGEX.test(email) || email.length > MAX_EMAIL_LENGTH) {
       showAlertMessage("danger", "Please enter a valid email.");
+      return;
+    }
+    if (phone && (!PHONE_REGEX.test(phone) || phone.length > MAX_PHONE_LENGTH)) {
+      showAlertMessage("danger", "Please enter a valid phone number.");
       return;
     }
     if (!message || message.length > MAX_MESSAGE_LENGTH) {
@@ -73,14 +81,15 @@ const Contact = () => {
     lastSubmitRef.current = now;
 
     try {
-      const { error } = await supabase.from("contact_requests").insert([
-        { name, email, message },
-      ]);
+      const row = { name, email, message };
+      if (phone) row.phone = phone;
+
+      const { error } = await supabase.from("contact_requests").insert([row]);
 
       if (error) throw error;
 
       showAlertMessage("success", "Message sent successfully!");
-      setFormData({ name: "", email: "", message: "" });
+      setFormData({ name: "", email: "", phone: "", message: "" });
     } catch (error) {
       console.error(error);
       showAlertMessage("danger", "Something went wrong. Please try again.");
@@ -144,6 +153,23 @@ const Contact = () => {
               onChange={handleChange}
               maxLength={MAX_EMAIL_LENGTH}
               required
+            />
+          </div>
+
+          <div className="mb-5">
+            <label htmlFor="phone" className="field-label">
+              Phone Number <span className="text-neutral-600 text-xs">(optional)</span>
+            </label>
+            <input
+              id="phone"
+              name="phone"
+              type="tel"
+              className="field-input field-input-focus"
+              placeholder="+91 98765 43210"
+              autoComplete="tel"
+              value={formData.phone}
+              onChange={handleChange}
+              maxLength={MAX_PHONE_LENGTH}
             />
           </div>
 
